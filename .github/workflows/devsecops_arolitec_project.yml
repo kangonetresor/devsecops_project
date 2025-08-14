@@ -9,39 +9,69 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # Step 1: Checkout the code
+    # 1. Récupération du code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # Step 2: Set up the application (for JavaScript or Python)
-    - name: Set up Node.js (for JavaScript apps)
+    # 2. Détection du langage du projet
+    - name: Detect project type
+      id: detect
+      run: |
+        if [ -f "package.json" ]; then
+          echo "lang=js" >> $GITHUB_ENV
+          echo "port=3000" >> $GITHUB_ENV
+        elif [ -f "requirements.txt" ]; then
+          echo "lang=python" >> $GITHUB_ENV
+          echo "port=5000" >> $GITHUB_ENV
+        else
+          echo "❌ Impossible de détecter le langage (ni package.json ni requirements.txt trouvé)"
+          exit 1
+        fi
+
+    # 3. Setup & install pour JS
+    - name: Set up Node.js
+      if: env.lang == 'js'
       uses: actions/setup-node@v3
       with:
         node-version: '16'
 
     - name: Install dependencies (JavaScript)
+      if: env.lang == 'js'
       run: npm install
 
-    - name: Set up Python (for Python apps)
+    # 4. Setup & install pour Python
+    - name: Set up Python
+      if: env.lang == 'python'
       uses: actions/setup-python@v4
       with:
         python-version: '3.9'
 
     - name: Install dependencies (Python)
+      if: env.lang == 'python'
       run: pip install -r requirements.txt
 
-    # Step 3: Start the application
+    # 5. Lancement de l'application
     - name: Start the application
       run: |
-        nohup npm start & # For JavaScript
-        nohup python app.py & # For Python
-        sleep 10 # Wait for the app to start
+        if [ "$lang" = "js" ]; then
+          nohup npm start &
+        elif [ "$lang" = "python" ]; then
+          nohup python app.py &
+        fi
+        sleep 15
 
-    # Step 4: Run OWASP ZAP Scan
+    # 6. Scan OWASP ZAP (avec rapport HTML)
     - name: Run OWASP ZAP Scan
       uses: zaproxy/action-full-scan@v0.7.0
       with:
-        target: 'http://localhost:3000' # Replace with your app's URL
-        #rules_file_name: '.zap/rules.json' # Optional: Custom rules
+        target: "http://localhost:${{ env.port }}"
+        cmd_options: "-r zap-report.html"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    # 7. Upload du rapport
+    - name: Upload ZAP report
+      uses: actions/upload-artifact@v4
+      with:
+        name: owasp-zap-report
+        path: zap-report.html
