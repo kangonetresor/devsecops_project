@@ -9,58 +9,34 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Récupération du code
+    # 1. Récupérer le code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # 2. Détection du langage du projet
-    - name: Detect project type
-      id: detect
-      run: |
-        if [ -f "package.json" ]; then
-          echo "lang=js" >> $GITHUB_ENV
-          echo "port=3000" >> $GITHUB_ENV
-        elif [ -f "requirements.txt" ]; then
-          echo "lang=python" >> $GITHUB_ENV
-          echo "port=5000" >> $GITHUB_ENV
-        else
-          echo "❌ Impossible de détecter le langage (ni package.json ni requirements.txt trouvé)"
-          exit 1
-        fi
-
-    # 3. Setup & install pour JS
-    - name: Set up Node.js
-      if: env.lang == 'js'
-      uses: actions/setup-node@v3
-      with:
-        node-version: '16'
-
-    - name: Install dependencies (JavaScript)
-      if: env.lang == 'js'
-      run: npm install
-
-    # 4. Setup & install pour Python
+    # 3. Setup Python si Python détecté
     - name: Set up Python
       if: env.lang == 'python'
       uses: actions/setup-python@v4
       with:
-        python-version: '3.9'
+        python-version: '3.10'
 
-    - name: Install dependencies (Python)
+    # 4. Installation des dépendances Python
+    - name: Install Python dependencies
       if: env.lang == 'python'
-      run: pip install -r requirements.txt
-
-    # 5. Lancement de l'application
-    - name: Start the application
       run: |
-        if [ "$lang" = "js" ]; then
-          nohup npm start &
-        elif [ "$lang" = "python" ]; then
-          nohup python app.py &
-        fi
+        cd Source/Functions/RPSLS.Python.Api
+        pip install -r requirements.txt
+        pip install azure-functions-core-tools==4.*
+
+    # 5. Lancer Azure Functions en arrière-plan
+    - name: Start Azure Function
+      if: env.lang == 'python'
+      run: |
+        cd Source/Functions/RPSLS.Python.Api
+        nohup func start --port $port --verbose & 
         sleep 15
 
-    # 6. Scan OWASP ZAP (avec rapport HTML)
+    # 6. Lancer le scan OWASP ZAP
     - name: Run OWASP ZAP Scan
       uses: zaproxy/action-full-scan@v0.7.0
       with:
@@ -69,7 +45,7 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-    # 7. Upload du rapport
+    # 7. Upload du rapport HTML comme artefact
     - name: Upload ZAP report
       uses: actions/upload-artifact@v4
       with:
