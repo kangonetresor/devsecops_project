@@ -29,16 +29,17 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          output: codeql-results-${{ matrix.language }}.sarif
+          output: results-${{ matrix.language }}.sarif
 
-      - name: Install SARIF Tools
+      - name: Install Python & SARIF Tools
         run: |
           sudo apt-get update
           sudo apt-get install python3 python3-pip -y
           pip3 install sarif-tools
 
       - name: Convert SARIF to Markdown report
-        run: sarif-tools markdown codeql-results-${{ matrix.language }}.sarif > codeql-report-${{ matrix.language }}.md
+        run: |
+          sarif-tools markdown results-${{ matrix.language }}.sarif > codeql-report-${{ matrix.language }}.md
 
       - name: Upload CodeQL Human-Readable Report
         uses: actions/upload-artifact@v4
