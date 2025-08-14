@@ -8,10 +8,24 @@ jobs:
   zap-scan:
     runs-on: ubuntu-latest
 
+    services:
+      api:
+        build:
+          context: ./Source/Functions/RPSLS.Python.Api
+        ports:
+          - 7071:7071
+
     steps:
     # 1. Récupérer le code
     - name: Checkout code
       uses: actions/checkout@v3
+
+    - name: Wait for API
+      run: |
+        echo "Waiting for API to start..."
+        sleep 15
+        curl -v http://api:7071 || exit 1
+
 
     # 3. Setup Python si Python détecté
     - name: Set up Python
@@ -40,10 +54,8 @@ jobs:
     - name: Run OWASP ZAP Scan
       uses: zaproxy/action-full-scan@v0.7.0
       with:
-        target: "http://localhost:${{ env.port }}"
+        target: "http://api:7071"
         cmd_options: "-r zap-report.html"
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     # 7. Upload du rapport HTML comme artefact
     - name: Upload ZAP report
