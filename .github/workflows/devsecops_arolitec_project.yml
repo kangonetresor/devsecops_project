@@ -29,21 +29,34 @@ jobs:
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v3
         with:
-          output: results-${{ matrix.language }}.sarif
+          output: ./results
 
-      - name: Install Python & SARIF Tools
+      # Convert SARIF to HTML without sarif-tools
+      - name: Convert SARIF to HTML
         run: |
-          sudo apt-get update
-          sudo apt-get install python3 python3-pip -y
-          pip3 install sarif-tools
-          sarif-tools markdown results-${{ matrix.language }}.sarif > codeql-report-${{ matrix.language }}.md
+          python3 - <<'EOF'
+          import json, sys
+          from pathlib import Path
 
-      - name: Upload CodeQL Human-Readable Report
+          sarif_file = Path("results/${{ matrix.language }}.sarif")
+          if sarif_file.exists():
+              data = json.loads(sarif_file.read_text())
+              html_content = "<html><body><h1>CodeQL Report</h1>"
+              for run in data.get("runs", []):
+                  for result in run.get("results", []):
+                      rule_id = result.get("ruleId", "N/A")
+                      message = result.get("message", {}).get("text", "")
+                      severity = next((tag for tag in result.get("properties", {}).get("tags", []) if "severity" in tag.lower()), "Unknown")
+                      html_content += f"<p><b>{rule_id}</b> - {severity}<br>{message}</p>"
+              html_content += "</body></html>"
+              Path("codeql-report-${{ matrix.language }}.html").write_text(html_content)
+          EOF
+
+      - name: Upload HTML Report
         uses: actions/upload-artifact@v4
         with:
           name: codeql-report-${{ matrix.language }}
-          path: codeql-report-${{ matrix.language }}.md
-
+          path: codeql-report-${{ matrix.language }}.html
   dependency-and-image-scan:
     name: Scan Dependencies & Docker Image
     runs-on: ubuntu-latest
