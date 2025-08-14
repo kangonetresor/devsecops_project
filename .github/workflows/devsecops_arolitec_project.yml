@@ -9,70 +9,39 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    # 1. Récupérer le code
+    # Step 1: Checkout the code
     - name: Checkout code
       uses: actions/checkout@v3
 
-    # 2. Détection du type de projet (Python ou JS)
-    - name: Detect project type
-      id: detect
-      run: |
-        if [ -f "package.json" ]; then
-          echo "lang=js" >> $GITHUB_ENV
-          echo "port=3000" >> $GITHUB_ENV
-        elif [ -f "requirements.txt" ]; then
-          echo "lang=python" >> $GITHUB_ENV
-          echo "port=5000" >> $GITHUB_ENV
-        else
-          echo "Impossible de détecter le langage."
-          exit 1
-        fi
-
-    # 3. Setup Node.js si JavaScript détecté
-    - name: Set up Node.js
-      if: env.lang == 'js'
+    # Step 2: Set up the application (for JavaScript or Python)
+    - name: Set up Node.js (for JavaScript apps)
       uses: actions/setup-node@v3
       with:
-        node-version: '18'
+        node-version: '16'
 
-    # 4. Setup Python si Python détecté
-    - name: Set up Python
-      if: env.lang == 'python'
+    - name: Install dependencies (JavaScript)
+      run: npm install
+
+    - name: Set up Python (for Python apps)
       uses: actions/setup-python@v4
       with:
-        python-version: '3.10'
+        python-version: '3.9'
 
-    # 5. Installation des dépendances
-    - name: Install dependencies
+    - name: Install dependencies (Python)
+      run: pip install -r requirements.txt
+
+    # Step 3: Start the application
+    - name: Start the application
       run: |
-        if [ "$lang" = "js" ]; then
-          npm install
-        elif [ "$lang" = "python" ]; then
-          pip install -r requirements.txt
-        fi
+        nohup npm start & # For JavaScript
+        nohup python app.py & # For Python
+        sleep 10 # Wait for the app to start
 
-    # 6. Lancer l'application en arrière-plan
-    - name: Start application
-      run: |
-        if [ "$lang" = "js" ]; then
-          nohup npm start &
-        elif [ "$lang" = "python" ]; then
-          nohup python app.py &
-        fi
-        sleep 15
-
-    # 7. Lancer le scan OWASP ZAP
+    # Step 4: Run OWASP ZAP Scan
     - name: Run OWASP ZAP Scan
       uses: zaproxy/action-full-scan@v0.7.0
       with:
-        target: "http://localhost:${{ env.port }}"
-        cmd_options: "-r zap-report.html"
+        target: 'http://localhost:3000' # Replace with your app's URL
+        #rules_file_name: '.zap/rules.json' # Optional: Custom rules
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-    # 8. Upload du rapport HTML comme artefact
-    - name: Upload ZAP report
-      uses: actions/upload-artifact@v4
-      with:
-        name: owasp-zap-report
-        path: zap-report.html
