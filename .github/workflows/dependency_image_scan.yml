@@ -26,7 +26,7 @@ jobs:
         run: trivy fs --exit-code 0 --severity HIGH,CRITICAL .
 
       - name: Build Docker image
-        run: docker build -t myapp:latest .
+        run: docker build -t myapp:latest -f Source/Functions/RPSLS.Python.Api/Dockerfile Source/Functions/RPSLS.Python.Api
 
       - name: Scan Docker image
         run: trivy image --exit-code 0 --severity HIGH,CRITICAL myapp:latest
