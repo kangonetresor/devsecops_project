@@ -49,3 +49,11 @@ services:
     build:
       context: ./Services/
       dockerfile: RPSLS.ModelUploader.Web/Dockerfile
+
+  rpsls-api:
+    build:
+      context: ../Source/Functions/RPSLS.Python.Api
+      dockerfile: Dockerfile
+    image: rpsls-python-api:latest
+    ports:
+      - "7071:80"

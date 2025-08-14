@@ -23,13 +23,13 @@ jobs:
 
       - name: Initialize CodeQL
         id: init_codeql
-        uses: github/codeql-action/init@v1
+        uses: github/codeql-action/init@v3
         with:
           languages: ${{ matrix.language }}
           queries: security-and-quality
 
       - name: perform CodeQL Analysis
         id: analyze_codeql
-        uses: github/codeql-action/analyze@v2
+        uses: github/codeql-action/analyze@v3
 
         
