@@ -1,65 +1,92 @@
-name: OWASP ZAP Dynamic Scan
+name: CodeQL Analysis & Dependency/Image Scan
 
 on:
   push:
   pull_request:
 
+permissions:
+  security-events: write
+  actions: read
+  contents: read
+
 jobs:
-  zap-scan:
+  analyze:
+    name: Analyze statique (CodeQL)
     runs-on: ubuntu-latest
-
-    services:
-      api:
-        build:
-          context: ./Source/Functions/RPSLS.Python.Api
-        ports:
-          - 7071:7071
-
+    strategy:
+      matrix:
+        language: ['javascript', 'python']
     steps:
-    # 1. Récupérer le code
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    - name: Wait for API
-      run: |
-        echo "Waiting for API to start..."
-        sleep 15
-        curl -v http://api:7071 || exit 1
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v3
+        with:
+          languages: ${{ matrix.language }}
+          queries: security-and-quality
 
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v3
+        with:
+          output: ./results
 
-    # 3. Setup Python si Python détecté
-    - name: Set up Python
-      if: env.lang == 'python'
-      uses: actions/setup-python@v4
-      with:
-        python-version: '3.10'
+      # Convert SARIF to HTML without sarif-tools
+      - name: Convert SARIF to HTML
+        run: |
+          python3 - <<'EOF'
+          import json, sys
+          from pathlib import Path
+          sarif_file = Path("results/${{ matrix.language }}.sarif")
+          if sarif_file.exists():
+              data = json.loads(sarif_file.read_text())
+              html_content = "<html><body><h1>CodeQL Report</h1>"
+              for run in data.get("runs", []):
+                  for result in run.get("results", []):
+                      rule_id = result.get("ruleId", "N/A")
+                      message = result.get("message", {}).get("text", "")
+                      severity = next((tag for tag in result.get("properties", {}).get("tags", []) if "severity" in tag.lower()), "Unknown")
+                      html_content += f"<p><b>{rule_id}</b> - {severity}<br>{message}</p>"
+              html_content += "</body></html>"
+              Path("codeql-report-${{ matrix.language }}.html").write_text(html_content)
+          EOF
+      - name: Upload HTML Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: codeql-report-${{ matrix.language }}
+          path: codeql-report-${{ matrix.language }}.html
+  dependency-and-image-scan:
+    name: Scan Dependencies & Docker Image
+    runs-on: ubuntu-latest
+    needs: analyze
+    if: success()
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-    # 4. Installation des dépendances Python
-    - name: Install Python dependencies
-      if: env.lang == 'python'
-      run: |
-        cd Source/Functions/RPSLS.Python.Api
-        pip install -r requirements.txt
-        pip install azure-functions-core-tools==4.*
+      - name: Install Trivy
+        run: |
+          sudo apt-get install wget apt-transport-https gnupg lsb-release -y
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | sudo gpg --dearmor -o /usr/share/keyrings/trivy.gpg
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb $(lsb_release -sc) main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update && sudo apt-get install trivy -y
+      - name: Scan Dependencies
+        run: trivy fs --exit-code 0 --severity HIGH,CRITICAL .
 
-    # 5. Lancer Azure Functions en arrière-plan
-    - name: Start Azure Function
-      if: env.lang == 'python'
-      run: |
-        cd Source/Functions/RPSLS.Python.Api
-        nohup func start --port $port --verbose & 
-        sleep 15
+      - name: Build Docker image
+        run: docker build -t myapp:latest -f Source/Functions/RPSLS.Python.Api/Dockerfile Source/Functions/RPSLS.Python.Api
 
-    # 6. Lancer le scan OWASP ZAP
-    - name: Run OWASP ZAP Scan
-      uses: zaproxy/action-full-scan@v0.7.0
-      with:
-        target: "http://api:7071"
-        cmd_options: "-r zap-report.html"
+      - name: Scan Docker image
+        run: trivy image --exit-code 0 --severity HIGH,CRITICAL myapp:latest
 
-    # 7. Upload du rapport HTML comme artefact
-    - name: Upload ZAP report
-      uses: actions/upload-artifact@v4
-      with:
-        name: owasp-zap-report
-        path: zap-report.html
+      - name: Generate Trivy Reports
+        run: |
+          trivy fs --format json --output trivy-dependencies-report.json .
+          trivy image --format json --output trivy-docker-report.json myapp:latest
+      - name: Upload Scan Reports
+        uses: actions/upload-artifact@v4
+        with:
+          name: trivy-scan-reports
+          path: |
+            trivy-dependencies-report.json
+            trivy-docker-report.json
