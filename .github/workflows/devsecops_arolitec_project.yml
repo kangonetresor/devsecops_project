@@ -11,7 +11,7 @@ permissions:
 
 jobs:
   analyze:
-    name: Analyze statique (CodeQL)
+    name: Analyse statique (CodeQL)
     runs-on: ubuntu-latest
     strategy:
       matrix:
